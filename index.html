@@ -1,0 +1,262 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Yalin Chen</title>
+    <script src="https://d3js.org/d3.v3.js"></script>
+    <script src="topojson.min.js"></script>
+    <style>
+        .map-boundary {
+            stroke: #eee;
+        }
+        
+        #tooltip {
+            position: absolute;
+            /* left: 20px; */
+            /* top:  100px; */
+            background: #fff;
+            width: "300px";
+            height: auto;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        #tooltip.hidden {
+            display: none;
+        }
+        
+        #mytable {
+            position: absolute;
+            left: 760px;
+            top: 100px;
+            font-size: 10px;
+            font-family: cursive;
+            padding: 0px 10px;
+            border-spacing: 6px, 6px;
+            width: 700px;
+            border: 1px solid #666;
+            border-collapse: collapse;
+        }
+        th,
+        tr,
+        td {
+            border: 1px solid #666;
+        }
+        
+        tr:nth-child(even) {
+            background: #CCC
+        }
+        
+        tr:nth-child(odd) {
+            background-color: #FAFAFA;
+        }
+        
+        tr:hover {
+            background-color: #E6FBFF;
+        }
+    </style>
+</head>
+
+<body>
+    <div>
+        <h1>臺灣各縣市偏鄉學校之互動式視覺化平台</h1></div>
+        <div><h5>請點選地圖和按鈕喔! 未完成...繼續寫...</h5></div>
+    <div><input type="button" onclick=window.open("Pie_Rural.html") value="圓餅圖"></div>
+
+    <div id="tooltip" class="hidden">
+        <p><strong id="city">Hello</strong></p>
+        <p id="Rural">Rural</p>
+    </div>
+
+    <svg width="600" height="800"></svg>
+    <script>
+        //偏鄉學校資料: RuralSchool_2015.json
+        d3.csv("RuralSchool_2015.csv", function (DataSet) {
+            //NameArr: 學校名稱(包含重複項目)           
+            var NameArr = DataSet.map(function (d) {
+                return d.Name;
+            });
+            //uniqueNameArr: 學校名稱(無重複項目) 
+            var uniqueNameArr = unique(NameArr);
+
+            //filterNameArr: 學校名稱(去除空白項目) 
+            var filterNameArr = uniqueNameArr.filter(function (d) {
+                return d != "";
+            });
+
+
+
+            //1.地理資料檔: topoTaiwan.json
+            d3.json("topoTaiwan.json", function (topoData) {
+
+                bind(topoData, DataSet);
+                render();
+
+            });
+
+        });
+
+        function render() {
+            //從這裡開始修改
+            var fScale = d3.scale.category20c();
+            d3.selectAll("path")
+                .attr({
+                    fill: function (d, i) {
+                        return fScale(i);
+                    }
+                })         
+                .on("mouseover", function (d) {
+                    tempColor = d3.select(this).attr("fill");
+                    d3.select(this).attr({
+                        fill: "lightpink"
+                    })
+                })
+                .on("mouseout", function (d) {
+                    d3.select(this).attr({
+                        fill: tempColor
+                    })
+                })
+                .on("click", function (d) {
+                    var coordinates = d3.mouse(this);
+                    var x = coordinates[0];
+                    var y = coordinates[1];
+
+                    var tooltip = d3.select("#tooltip")
+                        .style({
+                            left: (x + 20) + "px",
+                            top: (y + 20) + "px"
+                        });
+                    tooltip.select("#city").text(d.properties.C_Name);
+                    d3.csv("RuralSchool_2015.csv", function (DataSet) {
+
+                        var CityArr = DataSet.map(function (d) {
+                            return d.City;
+                        });
+
+                        var RuralNumber = 0;
+                        for (var i = 0; i < CityArr.length; i++) {
+                            if (CityArr[i] === d.properties.C_Name) {
+                                RuralNumber = RuralNumber + 1;
+                                //console.log(CityArr);
+                            }
+                        }
+
+                        //console.log(RuralNumber);
+                        tooltip.select("#Rural").text("偏鄉學校數量: " + RuralNumber);
+
+                        //表格
+                        console.log(d.properties.C_Name);
+
+                        var NowCity = d.properties.C_Name;
+                        var newDataSet = DataSet.filter(function (d) {
+                            return d.City === NowCity;
+                        });
+
+                        console.log(newDataSet);
+                        var Rural_Table = tabulate(newDataSet, ["City", "Town", "Level", "Name", "Mark", "Address"])
+
+                    });
+
+                    tooltip.classed("hidden", false);
+
+                });
+
+
+            //偏鄉資料: 
+            //            d3.selectAll("div#List").text(function (d) {
+            //                return d.Name;
+            //            });
+
+
+        }
+
+        function bind(topoData, DataSet) {
+            // 2.地理投影器: 設定投影方式(麥卡托)、定位點([經,緯度])、縮放(scale)
+            var projection = d3.geo.mercator().center([121, 24]).scale(7000);
+
+            // 3.路徑產生器: d3.geo.path()
+            var path = d3.geo.path().projection(projection);
+
+            // 4.地理資料檔: 使用topojson.js載入地理資料
+            var topo = topojson.feature(topoData, topoData.objects["county"]);
+
+            // 綁定path與載入的地理資料(features:每一地理區劃)
+            var selection = d3.select("svg").selectAll("path").data(topo.features);
+            //            console.log(topo.features);   
+            selection.enter().append("path");
+            selection.exit().remove();
+            selection.classed("map-boundary", true).attr("d", path);
+
+            //偏鄉學校資料: DataSet
+            //            var selection_List = d3.select("body").selectAll("div#List").data(DataSet);
+            //            selection_List.enter().append("div").attr("id", "List");
+            //            selection_List.exit().remove();
+
+            //  console.log(DataSet);
+        }
+
+        function unique(array) {
+            var n = [];
+            for (var i = 0; i < array.length; i++) {
+                if (n.indexOf(array[i]) == -1) {
+                    n.push(array[i]);
+                }
+            }
+            return n;
+        }
+
+        //表格
+        function tabulate(DataSet, columns) {
+
+            d3.select("table").remove();
+
+            var table = d3.select("body").append("table")
+                .attr("id", "mytable"),
+              //  thread = table.append("thread"),
+                tbody = table.append("tbody");
+
+//            thread.append("tr")
+//                .selectAll("th")
+//                .data(columns)
+//                .enter()
+//                .append("th")
+//                .text(function (column) {
+//                    return column;
+//                });
+
+            var selection_city = d3.select(this);
+
+
+            var rows = tbody.selectAll("tr")
+                .data(DataSet)
+                .enter()
+                .append("tr");
+
+            var cells = rows.selectAll("td")
+                .data(function (row) {
+                    return columns.map(function (column) {
+                        return {
+                            column: column,
+                            value: row[column]
+                        };
+                    });
+
+                })
+                .enter()
+                .append("td")
+                //.attr("style", "font-family: Courier")
+                .html(function (d) {
+                    return d.value;
+                });
+
+            return table;
+        }
+    </script>
+
+
+
+</body>
+
+</html>
